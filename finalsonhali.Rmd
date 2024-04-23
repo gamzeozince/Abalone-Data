@@ -1,0 +1,326 @@
+---
+title: "DENETİMLİ MAKİNA ÖĞRENMESİ "
+author: "GAMZE OZINCE "
+date: "2024-01-11"
+output: html_document
+---
+
+<h1>1.VERİ SETİ BİLGİSİ </h1>
+```{r,warning=FALSE,message=FALSE}
+data <- read.csv("C:/Users/gamze/OneDrive/Belgeler/abalone_veriseti.data",header = TRUE)
+colnames(data) <- c("sex","length","diameter","height","whole_weight","shucked_weight","viscera_weight","shell_weight","rings")
+#%70 - %30 Oranında Eğitim ve Test Verisinin Ayrıştırılması:
+set.seed(745)
+egitim_indis <- sample(1:nrow(data), size= floor(0.7* nrow(data)))
+egitim_data <- data[egitim_indis,]
+test_data <- data[-egitim_indis,]
+#summary(data)
+df <- data[,-c(1)]
+#boxplot(df,vertical=T)
+library("corrplot")
+corr <- cor(df)
+corrplot.mixed(corr, lower="pie",upper="number",tl.cex = 0.5, cl.cex = 0.5) 
+```
+
+Veri seti, 4176 gözlem ve 9 değişkenden oluşmaktadır. Sex değişkeni kategorik, diğer değişkenler nümeriktir. Rings bağımlı değişkenimizdir.Tanımlayıcı istatisitiklere baktığımızda ise, height, shucked_weight, shell_weight gibi değişkenlerin üçüncü kartil değerleri ve maksimum değerlerinin arasında büyük farklar olduğu da görülmektedir. Bu da bize değişkenlerde aykırı değerler olabileceğini göstermektedir. Kutu grafiklerine baktığımızda da aykırı değerler olduğu görülmekte ve lenght ve diameter değişkenleri soldan çarpık, whole_weight, rings ve shucked_weight gibi değişkenler sağdan çarpık olduğu gözlemlenmiştir. Korelasyon grafiğine baktığımızda genel olarak değişkenler arası korelasyonun yüksek olduğu görülmektedir.Bağımlı değişken olan rings değişkenin diğer tüm değişkenlerle pozitif yönlü korelasyonu vardır ve shell_weight dğişkeniyle en yüksek korelasyona sahiptir.Özellikle length ve diameter arasında pozitif yönde güçlü bir korelasyon vardır. 
+
+<h1>2.MODELLER </h1>
+<h2>2.1.Doğrusal Regresyon(LM) </h2>
+```{r,warning=FALSE,message=FALSE}
+model_lm <- lm(egitim_data$rings~as.factor(egitim_data$sex)+egitim_data$diameter+egitim_data$height+egitim_data$whole_weight+egitim_data$shucked_weight+egitim_data$viscera_weight+egitim_data$shell_weight, data = egitim_data)
+#summary(model_lm)
+#RMSE değeri: train veri seti
+predict_egitim_model_lm = predict(model_lm,egitim_data)
+egitim_model_lm <- sqrt(mean((egitim_data$rings-predict_egitim_model_lm)^2))
+egitim_model_lm
+#RMSE değeri: test veri seti
+predict_test_model_lm = predict(model_lm,test_data)
+test_model_lm <- sqrt(mean((test_data$rings-predict_test_model_lm)^2))
+test_model_lm
+#anova(model_lm)
+#vif(model_lm)
+##Shapiro testi
+#shapiro.test(model_lm$residuals)
+#varyans kontrolü
+library(lmtest)
+#bptest(model_lm)
+```
+
+Doğrusal regresyon modelini kurarken birkaç model kurduk. Daha sonra olası en iyi alt küme yöntemiyle best modele karar verdik. Best modelimizin çıktısına baktığımızda, kestirim noktası olan sabit değer 3.8429 çıkmıştır. 
+R^2 ve adjusted R^2 değeri birbirlerine yakın ama yeteri kadar yüksek çıkmamıştır. Modelin anlamlılık seviyesi çok yüksek değildir.
+Model geçerliliği F-testine baktığımızda %5 önem düzeyinde test edildiğinde 426.8 olan F istatistiği değeri ve bu değere karşılık gelen p value <2.2e-16 olduğundan dolayı H0'ı red edemiyoruz. Bundan dolayı en az bir katsayı için model genel anlamda istatistiksel olarak anlamlıdır. 
+Modeldeki as.factor(Sex)I, diameter, height, whole_weight, shucked_weight, viscera_weight, shell_weight değişkenleri için p-value değerleri 0.05 den küçük olduğu için bu katsayılar istatistiksel olarak anlamlıdır.
+Anova testine baktığımızda modeldeki bağımsız değişkenin modeldeki toplam varyansa olan katkısının büyüklüğünü ölçer. diameter değişkeni p değeri 0.05 den küçük olduğu için bu değişken anlamlıdır.
+Hataların normal dağılıma sahip olup olmadığına bakmak için shapiro wilk testini kullandık. H0 (Sıfır Hipotezi): Hatalar normal dağılıma sahiptir. H1 (Alternatif Hipotez): Hatalar normal dağılıma sahip değildir. p-value değerimiz 0.05 den küçük olduğu için H0 red ediyoruz. Ve hataların normal dağılıma sahip olmadığını söyleyebiliriz. Sabit varyans kontrolüne baktığımızda da p value değerimiz 0.05 den küçük olduğu için H0 red ediyoruz. Ve hataların sabit varyansa sahip olmadığını söyleyebiliriz.
+
+<h2>2.2.Regresyon Ağacı(RT) </h2>
+```{r,warning=FALSE,message=FALSE}
+library(tree)
+library(psych)
+model_rt <- tree(rings~.,data=egitim_data)
+summary(model_rt)
+pairs.panels(egitim_data,gap=0,pch=21)
+plot(model_rt)
+text(model_rt,pretty=0)
+```
+
+Tree fonksiyonu ile rings bağımlı değişkeni ile diğer tüm bağımsız değişkenler arasındaki ilişkiyi modelleyen bir regresyon ağacı modeli oluşturduk. Regresyon ağacının oluşturulmasında "shell_weight" ve "shucked_weight" değişkenleri kullanılmıştır. Shell_wieght değişkeni y'i en iyi açıklayan değişkendir. Number of terminal nodes, ağacın kaç terminal düğüm içerdiğini belirtmektedir. Bu durumda, ağacımızda 8 terminal düğüm bulunmaktadır. Residual mean deviance, modelin kalıntılarının ortalamasının deviance (sapma) değerini belirtir. Daha düşük değer, modelin verilere daha iyi uyum sağladığını gösterebilir. Bu durumda, 5.682 olarak verilmiştir.
+
+```{r,warning=FALSE,message=FALSE}
+cv.egitim_data <- cv.tree(model_rt)
+plot(cv.egitim_data$size,cv.egitim_data$dev,type="b")
+prune_model_rt=prune.tree(model_rt,best=4)
+summary(prune_model_rt)
+plot(prune_model_rt)
+text(prune_model_rt,pretty=0)
+yhat_prune_full<-(predict(prune_model_rt))
+#plot(yhat_prune_full,egitim_data$rings) 
+egitim_prune_full_rt <- sqrt(mean((egitim_data$rings-yhat_prune_full)^2)) #train performansD1
+egitim_prune_full_rt
+predict_full_prune_rt <- predict(prune_model_rt, test_data)
+plot(predict_full_prune_rt,test_data$rings) 
+test_prune_full_rt <-sqrt(mean((test_data$rings-predict_full_prune_rt)^2)) #test performansD1
+test_prune_full_rt
+```
+
+Cross Validation yaparak ağacımızı buduyoruz. Amacımız en optimal seviyede kesmek ve deviance düşük olmasını sağlamak. Bu yüzden best olarak 4 de ağacımızı kestik. Aslında 7'de de kesebilirdik ve deviancemız daha düşük çıkardı. Ama bu seferde test performansının düşük çıkma ihtimalinden dolayı 4'de kesmeye karar verdik. Egitim verisinin RMSE değerine baktığımızda 2.55, test verisinin RMSE değerine baktığımızda ise 2.54 çıktı. RMSE değerlerinde aşırı bir fark olmadı sadece ağaç sadeleşti. Overfitting sorunu olmadığını görmekteyiz.
+
+<h2>2.3.Bagging ile Regresyon Ağacı (BRT)</h2>
+```{r,warning=FALSE,message=FALSE}
+library(randomForest)
+model_bag <- randomForest(rings~.,data =egitim_data,mtry=8,importance=TRUE)
+model_bag
+yhat.bag <- predict(model_bag,newdata = egitim_data)
+plot(yhat.bag,egitim_data$rings)
+abline(0,1)
+egitim_bag <- sqrt(mean((egitim_data$ring-yhat.bag)^2)) ##rmse değeri
+egitim_bag
+yhat.bag <- predict(model_bag,newdata = test_data)
+plot(yhat.bag,test_data$rings)
+abline(0,1)
+test_bag <- sqrt(mean((test_data$ring-yhat.bag)^2))##rmse değeri
+test_bag
+#model_bag$importance
+varImpPlot(model_bag)
+```
+
+Bagging için tüm değişkenleri (mtry=8) modelimize kattık ve 500 ağaçdan oluşan bir rassal orman modeli oluşturduk. Mean of squared residuals değeri 4.77'dir. Daha düşük bir değer, modelin eğitim verilerinde daha iyi bir uyum sağladığını gösterir. IncMSE yüzdesine baktığımızda, shucked_weight değişkeni çıkarıldığında elde edilen tahminlerdeki ortalama doğruluk düşüşü en fazla olduğu için model için anlamlıdır.  Purity yani saflığa baktığımızda da shell_weight,  whole_weight, shucked_weight değişkenleri en çok katkıyı sunmuştur. Bagging'deki RMSE değerlerine baktığımızda, eğitim verimizde 0.93, test verimizde ise 2.15 çıkmış. Bu da bize overfitting olabileceğini gösteriyor.
+
+<h2>2.4.Rassal Ormanlar Regresyonu (RFR)</h2>
+```{r,warning=FALSE,message=FALSE}
+model_rfr <- randomForest(rings~.,data =egitim_data,mtry=3,importance=TRUE)
+yhat.bag<-predict(model_rfr,newdata=egitim_data) #train verisi
+plot(yhat.bag,egitim_data$rings) 
+abline(0,1)
+egitim_rfr <- sqrt(mean((egitim_data$rings-yhat.bag)^2)) #train verisi
+egitim_rfr
+yhat.bag<-predict(model_rfr,newdata=test_data) #test verisi
+plot(yhat.bag,test_data$rings) 
+abline(0,1)
+test_rfr <- sqrt(mean((test_data$rings-yhat.bag)^2)) #test verisi
+test_rfr
+#model_rfr$importance
+varImpPlot(model_rfr)
+```
+
+Random Forest'ın bagging'den farklı olarak, baggingde mtry=8 tüm bağımsız değişkenleri aldık. Random forestta ise p/3(p değişken sayısı) olarak alıyoruz. Yani burda bize 3 farklı değişken alarak bağımsız ağaçları çiziyor. Daha sonra bu ağaçları bize özetliyor. IncMSE yüzdesine baktığımızda, shucked_weight, shell_weight, sex değişkenleri en çok katkı sunan değişkenlerdir. Purity yani saflığa baktığımızda da shell_weight, height, whole_weight, shucked_weight değişkenleri en çok katkıyı sunmuştur. Random Forest'daki RMSE değerlerine baktığımızda, eğitim verimizde 0.97, test verimizde ise 2.13 çıkmış. Bu da bize overfitting olabileceğini gösteriyor.
+
+<h2>2.5.Test Verisi Üzerinde Performans Karşılaştırılması</h2>
+```{r,warning=FALSE,message=FALSE}
+#RMSE DEĞERLERİNİN KARŞILAŞTIRILMASI
+cbind(test_model_lm,test_prune_full_rt,test_bag,test_rfr)
+```
+
+Modellerin test verileri üzerindeki performansları incelendiğinde, en iyi performansın Rassal Ormanlar Regresyonu ile alındığı görülmektedir. Sonuçta RMSE' nin en küçük olmasını istiyoruz.
+
+<h1>3.YANIT DEĞİŞKENİ DEĞİŞTİRİLİP YENİ MODELLER</h1>
+<h2>3.1.Sınıflandırma Ağacı (CT)</h2>
+
+```{r,warning=FALSE,message=FALSE}
+#Yanıt değişkeni: Rings değişkenini Sex=”Infant”’ı baz alabilecek şekilde uygun bir eşik değerden keserek (saptadığınız eşik değerin gerekçesini belirtiniz) , iki düzeyli olarak kodlanması.
+data2 <- read.csv("C:/Users/gamze/OneDrive/Belgeler/abalone_veriseti.data",header = TRUE)
+colnames(data2) <- c("sex","length","diameter","height","whole_weight","shucked_weight","viscera_weight","shell_weight","rings")
+RingsInfant <- ifelse(data2$rings<=11,"Infant","non-Infant")
+data2 <- data.frame(data2,RingsInfant)
+```
+
+Öncelikle Rings değişkenini Sex=”Infant”'ı baz alarak 11 eşik değerinden kestik. Burda 11 seçmemizin nedeni, sex ve rings'in Infant ve non-Infanta göre  scatterplot grafiğini çizdirdik. 11' de ayrıştıkları için eşik değerini 11'de kesmeye karar verdik. Daha sonra verimize yeni bir değişken olan RingsInfant değişkenini ekleyip veriden rings değişikenini çıkardık. Verimizi yine eğitim ve test seti olarak ayırdık.
+
+```{r,warning=FALSE,message=FALSE}
+set.seed(745)
+egitim_indis <- sample(1:nrow(data2), size = floor(0.7* nrow(data2)))
+egitim_data2 <- data2[egitim_indis,]
+test_data2 <- data2[-egitim_indis,]
+RingsInfant_egitim <- RingsInfant[egitim_indis]
+RingsInfant_test <- RingsInfant[-egitim_indis]
+##egitim seti
+tree.class <- tree(as.factor(RingsInfant)~.-rings ,data=egitim_data2)
+summary(tree.class )
+plot(tree.class )
+text(tree.class ,pretty =0)
+#test tahmin
+tree.pred_test <- predict(tree.class ,test_data2 ,type="class")
+table <- table(tree.pred_test ,RingsInfant_test)
+table
+accuracy_tree_test <- sum(diag(table))/sum(table)
+accuracy_tree_test
+##cross-validation
+cv.tree_ct <- cv.tree(tree.class ,FUN=prune.misclass )
+#cv.tree_ct
+plot(cv.tree_ct$size ,cv.tree_ct$dev ,type="b")
+prune.tree_ct <- prune.misclass (tree.class,best=6)
+plot(prune.tree_ct )
+summary(prune.tree_ct)
+text(prune.tree_ct ,pretty =0)
+tree.pred_prune<- predict(prune.tree_ct ,test_data2 , type="class")
+table <- table(tree.pred_prune ,RingsInfant_test)
+table
+accuracy_prune_test <- sum(diag(table))/sum(table)
+accuracy_prune_test
+```
+
+Sınıflandırma ağacının, regresyon ağacından farkı yanıt değişkenimizin nitel olmasıdır. Ağacımızda 9 tane terinal düğüm bulunmaktadır. En önemli değişken shell_weight olmuştur. Ondan sonraki en önemli değişken shucked-weight olmuştur. Ağaca baktığımızda, budanması gerektiğini görmekteyiz. Örneğin, shell_weight<0.29475 altında kalanlarda infant üstünde kalanlarda infant o yüzden ağacı budamamız gerekiyor. Modelimizi eğitim verisinde kurup, predictî test verisinde inceledik. Accuracy 0.81 geldi. Cross validation grafiğine baktığımızda, 6 da kesmeye karar verdik. Accuracy baktığımızda 0.81 gelmiş. Accuracy da bir değişilik olmadı.
+
+<h2>3.2.Bagging ile sınıflandırma ağacı (BCT)</h2>
+```{r,warning=FALSE,message=FALSE}
+if(!require("randomForest")){install.packages("randomForest")}
+library(randomForest)
+bag_class <- randomForest(as.factor(RingsInfant)~.-rings ,data=egitim_data2,mtry=8,importance=TRUE)
+predict_bag_class <- predict(bag_class,newdata=test_data2) 
+table <- table(predict_bag_class ,RingsInfant_test)
+table
+accuracy_bag_test <- sum(diag(table))/sum(table)
+accuracy_bag_test
+#bag_class$importance
+varImpPlot(bag_class)
+```
+
+Bagging ile sınıflandırmaya baktığımızda, mtry=8 aldık. Modelimizi eğitim verisinde kurup, testte accuraye baktığımızda, accuracy 0.84 bulduk. Sınıflandırma ağacına göre accuracy arttı. İmportance'lara baktığımızda shucked_weight değişkeni MeanDecreaseAccuracy anlamında en yüksek çıkmış. Gini anlamında ise shell_weight ön plana çıkmıştır.
+
+<h2>3.3.Rassal Ormanlar ile Sınıflandırma Ağacı (RFC)</h2>
+```{r,warning=FALSE,message=FALSE}
+rfc_class <- randomForest(as.factor(RingsInfant)~.-rings ,data=egitim_data2,mtry=3,importance=TRUE)
+predict.rfc <- predict(rfc_class,newdata=test_data2) 
+table <- table(predict.rfc ,RingsInfant_test)
+table
+accuracy_rfc_test <- sum(diag(table))/sum(table)
+accuracy_rfc_test
+#rfc_class$importance
+varImpPlot(rfc_class)
+```
+
+Random forest sınıflandırmaya baktığımızda ise, bu sefer mtry=3 aldık. Bunun sebebi değişken sayısının karekökünü alıyor olmamız. Accuracy 0.84 çıktı. Gini endeksinde shell_weight değişkeni en yüksek çıkmıştır. 
+
+<h2>3.3.Lojistik Regresyon (LR)</h2>
+```{r,warning=FALSE,message=FALSE}
+logisticreg<-glm(as.factor(RingsInfant)~.-rings,data=egitim_data2,family = binomial) 
+summary(logisticreg)
+confint.default(logisticreg) #lojistik regresyon meodelinde katsayılar için güven aralığı
+#vcov(logisticreg) #katsayılar için varyans-kovaryans matriis
+sqrt(vcov(logisticreg)[2,2]) #beta1 katsayısının standart hatası?
+#confint(logisticreg)
+##katsayılar için güven aralığı 
+#odds.confint<-exp(confint.default(logisticreg))
+#odds.confint
+```
+
+Modele baktığımızda, whole_weight, shucked_weight, viscera_weight, shell_weight değişkenleri anlamlı çıkmıştır. Tahmin değerlerini zamanım kısıtlı olduğu için yapamadım.
+
+<h2>3.4.Doğrusal Ayırma Analizi (LDA)</h2>
+```{r,warning=FALSE,message=FALSE}
+egitim_data3 <- egitim_data2[, !names(egitim_data2) %in% c("sex")]
+test_data3 <- test_data2[, !names(test_data2) %in% c("sex")]
+library(MASS)
+model_lda<-lda(as.factor(RingsInfant)~.-rings,data=egitim_data3)
+library(klaR)
+partimat(as.factor(RingsInfant)~., data=egitim_data3, method="lda",plot.matrix=TRUE,imageplot=FALSE)
+#Confusion matrix-accuracy-egitim
+tahmin_1<-predict(model_lda,egitim_data3)
+cfmatrix_1<-table(Tahmin=tahmin_1$class, Gercek=egitim_data3$RingsInfant)
+cfmatrix_1
+accuracy_1<-sum(diag(cfmatrix_1))/sum(cfmatrix_1)
+accuracy_1
+#Confusion matrix-accuracy-test
+tahmin_lda<-predict(model_lda,test_data3)
+cfmatrix_lda<-table(Tahmin=tahmin_lda$class, Gercek=test_data3$RingsInfant)
+cfmatrix_lda
+accuracy_lda_test<-sum(diag(cfmatrix_lda))/sum(cfmatrix_lda)
+accuracy_lda_test
+#multivariate Normality
+#normallik <- egitim_data3[, !names(egitim_data3) %in% c("RingsInfant")]
+#AD.test(normallik)
+```
+
+LDA, hem ayırma fonksiyonu yapabilen, hemde sınıflandırma yapabilen bir yöntemdir. Arka planda varsayımları çok kuvvetlidir eğer bu varsayımlar sağlanırsa çok güçlü bir yöntem olabilir. Modeli kurmadan önce "sex" değişkeni kategorik olduğu için veriden çıkardık. Hem eğitim hemde test verilerine göre tahminler elde ettik. Her iki veri setinin açıklayıcılığına baktığımızda eğitim setinin 0.83 , test setinin de 0.83 çıkmıştır. Çoklu bağlantı problemi yoktur. Ama varsayımlarından olan çok değişkenli normalliği Anderson-Darling testine göre kontrol ettiğimizde normal çıkmamıştır.
+
+<h2>3.5.Eğrisel Ayırma Analizi (QDA)</h2>
+```{r,warning=FALSE,message=FALSE}
+model_qda<-qda(as.factor(RingsInfant)~.-rings,data=egitim_data2)
+#model_qda
+tahmin_qda_1<-predict(model_qda,egitim_data2)
+cfmatrix_qda_1<-table(Tahmin=tahmin_qda_1$class, Gercek=egitim_data2$RingsInfant)
+accuracy_qda_egitim<-mean(tahmin_qda_1$class==egitim_data2$RingsInfant)
+accuracy_qda_egitim
+tahmin_qda<-predict(model_qda,test_data2)
+cfmatrix_qda<-table(Tahmin=tahmin_qda$class, Gercek=test_data2$RingsInfant)
+accuracy_qda_test<-mean(tahmin_qda$class==test_data2$RingsInfant)
+accuracy_qda_test
+#Partition plots
+library(klaR)
+partimat(as.factor(RingsInfant)~., data=egitim_data2, method="qda",plot.matrix=TRUE,imageplot=FALSE)
+```
+
+Önce eğitim setine göre performansına baktığımızda accuracy 0.81 geldi. Test setine göre performansı ise 0.79 geldi. Modele baktığımızda length değişkeninin infant'ta 0.50, non-infant'ta 0.58 geldiğini yani birbirine yakın sonuçlar verdiğini gördük. whole_weight değişkeni ise infant ve non-infantta farklılık gösterdiğini gördük. LDA ile QDA yı karşılaştırdığımızda, LDA hem eğitim hemde test setinde daha iyi sonuçlar verdiğini gördük.
+
+<h1>3.TÜM MODELLERİN ROC EĞRİSİ</h1>
+```{r,eval=TRUE,echo=FALSE,message=FALSE}
+library(pROC)
+library(ggplot2)
+
+# Gerçek sınıf etiketleri
+actual_classes <- test_data2$RingsInfant
+
+# Her model için ROC eğrilerini oluşturun ve ggplot nesneleri olarak kaydedin
+roc_tree <- ggroc(roc(actual_classes, as.numeric(tree.pred_test == "non-Infant"))) + geom_line(colour = "blue") + ggtitle("Decision Tree")
+roc_bagging <- ggroc(roc(actual_classes, as.numeric(predict_bag_class == "non-Infant"))) + geom_line(colour = "green") + ggtitle("Bagging")
+roc_rf <- ggroc(roc(actual_classes, as.numeric(predict.rfc == "non-Infant"))) + geom_line(colour = "red") + ggtitle("Random Forest")
+roc_lda <- ggroc(roc(actual_classes, as.numeric(tahmin_lda$class == "non-Infant"))) + geom_line(colour = "darkorange") + ggtitle("LDA")
+roc_qda <- ggroc(roc(actual_classes, as.numeric(tahmin_qda$class == "non-Infant"))) + geom_line(colour = "purple") + ggtitle("QDA")
+
+# ROC eğrilerini birleştirerek tek bir grafik oluşturun
+roc_plot <- ggplot() +
+  geom_line(data = roc_tree$data, aes(x = 1 - specificity, y = sensitivity), colour = "blue") +
+  geom_line(data = roc_bagging$data, aes(x = 1 - specificity, y = sensitivity), colour = "green") +
+  geom_line(data = roc_rf$data, aes(x = 1 - specificity, y = sensitivity), colour = "red") +
+  geom_line(data = roc_lda$data, aes(x = 1 - specificity, y = sensitivity), colour = "darkorange") +
+  geom_line(data = roc_qda$data, aes(x = 1 - specificity, y = sensitivity), colour = "purple") +
+  labs(x = "1 - Specificity", y = "Sensitivity", title = "ROC Curves for All Models") +
+  scale_color_manual(values = c("blue", "green", "red", "darkorange", "purple"),
+                     labels = c("Decision Tree", "Bagging", "Random Forest", "LDA", "QDA")) +
+  labs(color = "Models")
+
+# ROC eğrisini göster
+print(roc_plot)
+
+# AUC değerlerini hesaplayın ve yazdırın
+auc_values <- data.frame(
+  Model = c("Tree", "Bagging", "RF", "LDA", "QDA"),
+  AUC = c(auc(roc(actual_classes, as.numeric(tree.pred_test == "non-Infant"))),
+          auc(roc(actual_classes, as.numeric(predict_bag_class == "non-Infant"))),
+          auc(roc(actual_classes, as.numeric(predict.rfc == "non-Infant"))),
+          auc(roc(actual_classes, as.numeric(tahmin_lda$class == "non-Infant"))),
+          auc(roc(actual_classes, as.numeric(tahmin_qda$class == "non-Infant"))))
+)
+
+# AUC değerlerini bir tabloda göster
+print(auc_values)
+```
+
+AUC değeri, ROC eğrisinin altındaki alanın bir ölçüsüdür. AUC 1'e yaklaştıkça, modelin performansı iyidir; 0.5'e yaklaştıkça, modelin performansı rastgele tahminlere benzer.Yüksek AUC değerleri, modelin sınıflandırma performansının yüksek olduğunu gösterir. Bagging diğer modellere göre daha iyi bir perfomansa sahiptir. LR modeli grafikte yoktur. 
+
+<h1>4.TEST PERFORMANLARININ KARŞILAŞTIRILMASI</h1>
+```{r,warning=FALSE,message=FALSE}
+cbind(accuracy_tree_test,accuracy_prune_test,accuracy_bag_test,accuracy_rfc_test,accuracy_lda_test,accuracy_qda_test)
+```
+
+Test performansları genel olarak yüksektir. En iyi sonucu bagging ve randomforest modellerinde aldık. CT'nin test ve prunedaki test performansı aynıdır. 
